@@ -15,18 +15,18 @@ namespace MPDisplay
 	public sealed class MpdStatusObservable : IObservable<MpdStatus>
 	{
 		private const string StatusCommand = "status";
-		private const string IdlePlayer = "idle player";
+		private const string IdlePlayer = "idle player mixer";
 		private const string CurrentSongCommand = "currentsong";
 
 		private readonly IObservable<MpdStatus> _inner;
 
-		public MpdStatusObservable ()
+		public MpdStatusObservable (string host, int port)
 		{
 			this._inner = Observable
 				.Using(
 					() => new TcpClient(),
 					client => Observable
-						.FromAsync(() => Task.Factory.FromAsync(client.BeginConnect, client.EndConnect, "localhost" /*"AudioPi.fritz.box"*/, 6600, null))
+						.FromAsync(() => Task.Factory.FromAsync(client.BeginConnect, client.EndConnect, host, port, null))
 						//.Do(_ => Console.WriteLine("Connected"))
 						.SelectMany(unit => Observable
 				            .Using(
@@ -52,22 +52,29 @@ namespace MPDisplay
 												? new SongInfo(commandResponse.ResponseFields)
 												: (SongInfo?)null,
 											currentStatus.PlayerState,
-											100);
+											currentStatus.Volume);
 									}
 									else if (commandResponse.Command == StatusCommand)
 									{
 										string state = null;
-										if (commandResponse.ResponseFields.TryGetValue("state", out state))
-										{
-											return new MpdStatus(
-												currentStatus.SongInfo,
-												state == "play" 
-													? PlayerState.Play
-													: state == "pause"
-														? PlayerState.Pause
-														: PlayerState.Stop,
-												100);
-										}
+										string volume = null;
+
+										var newPlayerState = (commandResponse.ResponseFields.TryGetValue("state", out state))
+											? (state == "play" 
+												? PlayerState.Play
+												: state == "pause"
+													? PlayerState.Pause
+													: PlayerState.Stop)
+											: currentStatus.PlayerState;
+										
+										var newVolume = (commandResponse.ResponseFields.TryGetValue("volume", out volume))
+											? int.Parse(volume)
+											: currentStatus.Volume;
+										
+										return new MpdStatus(
+											currentStatus.SongInfo,
+											newPlayerState,
+											newVolume);
 									}	
 
 									return currentStatus;
